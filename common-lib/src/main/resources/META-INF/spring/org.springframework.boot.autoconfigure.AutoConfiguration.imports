@@ -1,0 +1,3 @@
+com.devanshu.distributedlovable.commonlib.exceptions.SharedExceptionAutoConfiguration
+com.devanshu.distributedlovable.commonlib.security.SharedSecurityAutoConfiguration
+com.devanshu.distributedlovable.commonlib.service.SharedServiceAutoConfiguration

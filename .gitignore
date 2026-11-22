@@ -1,0 +1,9 @@
+**/.mvn
+**/.settings
+**/logs
+**/target
+**/.classpath
+**/.factorypath
+**/.project
+**/mvnw
+**/mvnw.cmd

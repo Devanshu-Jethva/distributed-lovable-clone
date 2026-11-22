@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: logging-starter
+
+logging:
+  config: classpath:log4j2-spring.yml
+  level:
+    root: INFO
+    com.devanshu.distributedlovable: DEBUG

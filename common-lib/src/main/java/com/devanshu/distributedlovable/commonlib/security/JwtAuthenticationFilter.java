@@ -1,0 +1,95 @@
+package com.devanshu.distributedlovable.commonlib.security;
+
+import java.io.IOException;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.devanshu.distributedlovable.commonlib.exceptions.ErrorResponse;
+
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.security.SignatureException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.ObjectMapper;
+
+@Slf4j
+@RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+	JwtUtil jwtUtil;
+	ObjectMapper objectMapper;
+//	Not used right now, can be used if we want to pass the exception occurred in security filter chain to servlet context
+//	HandlerExceptionResolver handlerExceptionResolver; 
+
+	/**
+	 * This tells Spring to execute your JWT filter for the async dispatch as well.
+	 */
+	@Override
+	protected boolean shouldNotFilterAsyncDispatch() {
+		return false;
+	}
+
+	@Override
+	protected void doFilterInternal(final HttpServletRequest request, final HttpServletResponse response,
+			final FilterChain filterChain) throws ServletException, IOException {
+		log.debug("Incoming request: {}", request.getRequestURI());
+
+		String authHeader = request.getHeader("Authorization");
+
+		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+			filterChain.doFilter(request, response);
+			return;
+		}
+
+		String jwtToken = authHeader.substring(7);
+		try {
+			JwtUserPrincipal principal = jwtUtil.verifyToken(jwtToken);
+			if (principal != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+				UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(principal,
+						jwtToken, principal.authorities());
+				authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+				SecurityContextHolder.getContext().setAuthentication(authentication);
+				log.debug("JWT authentication set for user: {}", principal.username());
+			}
+		} catch (ExpiredJwtException ex) {
+			log.error("Expired JWT token attempt on {}", request.getRequestURI());
+			sendErrorResponse(response, HttpStatus.UNAUTHORIZED, "EXPIRED_TOKEN", "JWT token has expired");
+			return;
+		} catch (SignatureException ex) {
+			log.error("Invalid JWT signature on {}", request.getRequestURI());
+			sendErrorResponse(response, HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE",
+					"JWT signature verification failed");
+			return;
+		} catch (MalformedJwtException ex) {
+			log.error("Malformed JWT token on {}", request.getRequestURI());
+			sendErrorResponse(response, HttpStatus.UNAUTHORIZED, "MALFORMED_TOKEN", "JWT token format is invalid");
+			return;
+		} catch (JwtException ex) {
+			log.error("JWT validation failed on {}: {}", request.getRequestURI(), ex.getMessage());
+			sendErrorResponse(response, HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid JWT token");
+			return;
+		}
+
+		filterChain.doFilter(request, response);
+	}
+
+	private void sendErrorResponse(final HttpServletResponse response, final HttpStatus status, final String errorCode,
+			final String message) throws IOException {
+		response.setStatus(status.value());
+		response.setContentType("application/json");
+		response.getWriter().write(objectMapper.writeValueAsString(ErrorResponse.of(errorCode, message)));
+	}
+}
